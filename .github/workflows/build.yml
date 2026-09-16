@@ -1,0 +1,124 @@
+name: Build YukiPower
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential fakeroot rsync curl perl zip git libxml2 libtinfo6 xz-utils
+
+      - name: Install Theos
+        run: |
+          set -euo pipefail
+          git clone --depth=1 --recurse-submodules --shallow-submodules \
+            https://github.com/theos/theos.git "$HOME/theos"
+          echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
+          if [[ ! -f "$HOME/theos/vendor/include/ControlCenterUIKit/CCUIToggleModule.h" \
+             && ! -f "$HOME/theos/include/ControlCenterUIKit/CCUIToggleModule.h" ]]; then
+            echo "ControlCenterUIKit headers missing from Theos clone" >&2
+            exit 1
+          fi
+
+      - name: Install Theos Linux iOS toolchain
+        run: |
+          set -euo pipefail
+          mkdir -p "$THEOS/toolchain"
+          # Pin the GitHub "latest" stable L1ghtmann release (v11.1.0-L3).
+          # v19.0.0-L2 (main-update_3-eabca92) is a prerelease fallback.
+          curl -L --fail --retry 3 \
+            "https://github.com/L1ghtmann/llvm-project/releases/download/test-210562a/iOSToolchain-x86_64.tar.xz" \
+            | tar -xJ -C "$THEOS/toolchain"
+          CLANG="$(find "$THEOS/toolchain" -type f -name clang | head -n 1)"
+          if [[ -z "$CLANG" ]]; then
+            echo "clang not found after toolchain extract" >&2
+            find "$THEOS/toolchain" | head -n 80 >&2
+            exit 1
+          fi
+          echo "Using toolchain clang: $CLANG"
+          "$CLANG" --version
+
+      - name: Install iOS SDK
+        run: |
+          set -euo pipefail
+          mkdir -p "$THEOS/sdks"
+          git clone --depth=1 https://github.com/theos/sdks.git /tmp/theos-sdks
+          SDK="$(find /tmp/theos-sdks -maxdepth 1 -type d -name 'iPhoneOS*.sdk' | sort -V | tail -1)"
+          test -n "$SDK"
+          echo "Using SDK: $(basename "$SDK")"
+          cp -a "$SDK" "$THEOS/sdks/"
+          if ! find "$THEOS/sdks/$(basename "$SDK")" -iname '*ControlCenterUIKit*' | grep -q .; then
+            echo "ControlCenterUIKit missing from SDK $(basename "$SDK")" >&2
+            exit 1
+          fi
+
+      - name: Build rootless package
+        run: |
+          set -euo pipefail
+          make clean package FINALPACKAGE=1
+          ls -lh packages/*.deb
+          DEB="$(find packages -maxdepth 1 -name '*.deb' | head -n 1)"
+          {
+            echo "### Package"
+            echo '```'
+            dpkg-deb -I "$DEB"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify rootless layout
+        run: |
+          set -euo pipefail
+          mapfile -t DEBS < <(find packages -maxdepth 1 -name '*.deb')
+          test "${#DEBS[@]}" -eq 1
+          DEB="${DEBS[0]}"
+          ARCH="$(dpkg-deb -f "$DEB" Architecture)"
+          test "$ARCH" = "iphoneos-arm64"
+          LIST="$(dpkg-deb -c "$DEB")"
+          echo "$LIST"
+          echo "$LIST" | grep -q 'var/jb/Library/ControlCenter/Bundles/YukiPower.bundle/YukiPower'
+          echo "$LIST" | grep -q 'var/jb/Library/ControlCenter/Bundles/YukiPower.bundle/Info.plist'
+          if echo "$LIST" | grep -qE ' \./Library/ControlCenter/Bundles/'; then
+            echo "Refusing rooted (non-/var/jb) Control Center layout" >&2
+            exit 1
+          fi
+          {
+            echo "### Layout"
+            echo "- Architecture: \`$ARCH\`"
+            echo "- Rootless Control Center bundle present under \`/var/jb\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload DEB
+        uses: actions/upload-artifact@v4
+        with:
+          name: YukiPower-rootless
+          path: packages/*.deb
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Publish downloadable release
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest build
+          files: packages/*.deb
+          fail_on_unmatched_files: true
+          make_latest: true
+          body: |
+            Rootless Dopamine `.deb` built by GitHub Actions from `${{ github.sha }}`.
+            Architecture: `iphoneos-arm64`.
+            Install in Sileo/Zebra/Filza, then add **YukiPower** in Settings → Control Center.

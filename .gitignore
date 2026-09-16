@@ -1,0 +1,12 @@
+.theos/
+packages/
+obj/
+*.deb
+*.o
+.DS_Store
+.planning/
+task_plan.md
+findings.md
+progress.md
+.plan-attestation
+.mode
