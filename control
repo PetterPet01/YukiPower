@@ -1,7 +1,7 @@
 Package: com.local.yukipower
 Name: YukiPower
 Depends: com.opa334.ccsupport, com.opa334.choicy, com.rpetrich.powercuff
-Version: 1.0.0
+Version: 1.0.1
 Architecture: iphoneos-arm64
 Description: One-tap Ultra Low Power mode for Dopamine: iOS LPM + Powercuff Heavy + temporarily deny most tweaks through Choicy, with exact-state restore.
 Maintainer: Local build

@@ -38,6 +38,7 @@ Designed for the user's iPhone 7 on iOS 15.7.3. `ARCHS=arm64`, deployment target
 
 - **Turn Ultra OFF before uninstalling YukiPower.** The saved Choicy deny-list is a preference change and is intentionally persistent across resprings.
 - If the tile is unavailable while Ultra is active, open Choicy's preferences and clear/restore its **Global Tweak Configuration**, then respring. The backup remains at `/var/mobile/Library/Preferences/com.yukipower.state.plist` for manual recovery in Filza.
+- If a tap still does nothing, NewTerm: `log stream --predicate 'eventMessage CONTAINS "YukiPower"' --level debug`. A working tap logs `[YukiPower] setSelected:1` then a respring.
 - This disables injection for newly launched processes and gives SpringBoard a clean reload. It does not forcibly terminate every already-running app/daemon.
 - If a future Choicy release changes its preference schema, verify `globalDeniedTweaks` before using YukiPower.
 - The Powercuff rootless recompile is unofficial; Heavy is intentionally aggressive and may make the phone feel slow.
