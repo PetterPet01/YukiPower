@@ -43,14 +43,16 @@ jobs:
           curl -L --fail --retry 3 \
             "https://github.com/L1ghtmann/llvm-project/releases/download/test-210562a/iOSToolchain-x86_64.tar.xz" \
             | tar -xJ -C "$THEOS/toolchain"
-          CLANG="$(find "$THEOS/toolchain" -type f -name clang | head -n 1)"
-          if [[ -z "$CLANG" ]]; then
+          # clang is typically a symlink (clang -> clang-N); do not require -type f.
+          BIN="$THEOS/toolchain/linux/iphone/bin"
+          if [[ ! -e "$BIN/clang" ]]; then
             echo "clang not found after toolchain extract" >&2
-            find "$THEOS/toolchain" | head -n 80 >&2
+            ls -la "$BIN" >&2 || true
+            find "$THEOS/toolchain" -maxdepth 4 \( -type f -o -type l \) -name 'clang*' -print >&2 || true
             exit 1
           fi
-          echo "Using toolchain clang: $CLANG"
-          "$CLANG" --version
+          echo "Using toolchain clang: $BIN/clang"
+          "$BIN/clang" --version
 
       - name: Install iOS SDK
         run: |
